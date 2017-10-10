@@ -4,7 +4,7 @@ In order to be able to get Raw Serial data stream from the SN01. The user is req
 
 <img src="https://github.com/xinabox/xSN01/blob/master/extras/SN01%20NO.jpg" width="300" align="center">
 
-As can be seen from the above image the user is required to solder the joints together on each side inside the box labled as DTE.
+As can be seen from the above image the user is required to solder the joints together on each side inside the box labelled as DTE.
 
 Once completed your SN01 should now look as follows:
 
