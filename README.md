@@ -1,3 +1,5 @@
+[![GitHub issues](https://img.shields.io/github/issues/xinabox/xSN01.svg)](https://github.com/xinabox/xSN01/issues)
+
 # ☒CHIP SN01
 <img src="extras/SN01 V1.0.0.JPG" width="300" align="right">
 GNSS Module
