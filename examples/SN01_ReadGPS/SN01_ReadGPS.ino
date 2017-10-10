@@ -7,7 +7,11 @@
   The sensor communicates over the I2C Bus.
   
   ------------------------TIPS--------------------------
-  ----->Wire.begin(2,14); Communication with CW01
+	Comment out this line ----->Wire.pins(2, 14); for support
+	on other devices.
+
+	Comment out this line ----->Wire.setClockStretchLimit(15000); 
+	for support on other devices.
   
 *************************************************************/
 
@@ -15,7 +19,6 @@
 #include "xSN01.h"
 
 long tick_Print = 0;
-long tick_Poll = 0;
 
 void setup(){
 	// Start the Serial comms 
@@ -25,7 +28,13 @@ void setup(){
 	Serial.println("====================================");
 	Serial.println("       XINABOX SN01 GPS Data        ");
 	Serial.println("====================================");
-  
+
+  	// Set the I2C Pins for CW01
+	Wire.pins(2, 14); // Comment out for other Core Modules
+
+	// Set Clock Stetch Limit for CW01
+	Wire.setClockStretchLimit(15000); // Comment out for other Core Modules
+
 	// Start the I2C Communication
 	Wire.begin(); 
   
@@ -44,7 +53,7 @@ void loop(){
 	SN01.poll();
   
   	// Use a timer to print data once a second
-  	if((millis() - loop_timing) > 1000){
+  	if((millis() - tick_Print) > 1000){
 
   		// Get the date from GPS
 		date = SN01.getDate();
@@ -70,6 +79,6 @@ void loop(){
 
 		Serial.println();
 		
-		loop_timing = millis();
+		tick_Print = millis();
 	}
 }
