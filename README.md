@@ -4,6 +4,8 @@
 <img src="extras/SN01 V1.0.0.JPG" width="35%" height="auto" align="right">
 GNSS Module
 
+This module can be purchased on [Xinabox CC](https://xinabox.cc/products/SN01/).
+
 ## Requirements
   - [☒Core Library](https://github.com/xinabox/xCore)
   - [Arduino IDE 1.8.1](https://www.arduino.cc/en/main/software)
