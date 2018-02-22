@@ -18,6 +18,8 @@
 #include "xCore.h"
 #include "xSN01.h"
 
+xSN01 SN01;
+
 long tick_Print = 0;
 
 void setup(){
