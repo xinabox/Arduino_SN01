@@ -191,6 +191,4 @@ class xSN01: public xCoreClass
 		uint8_t GPS_I2C_ADDRESS;
 };
 
-extern xSN01 SN01;
-
 #endif
