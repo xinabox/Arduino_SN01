@@ -23,6 +23,8 @@
 *********************************************************/
 xSN01::xSN01(void)
 {
+	// Device I2C Address
+	uint8_t GPS_I2C_ADDRESS	=	0x42;
 	mySN01.tick = 0;
 	mySN01.Type = 2;
 	mySN01.GPS_checksum_calc = false;
@@ -386,5 +388,3 @@ uint16_t xSN01::readBytes16(byte device, byte reg){
 	value |= Wire.read();
 	return value;
 }
-
-xSN01 SN01= xSN01();
