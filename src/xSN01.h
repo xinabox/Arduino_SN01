@@ -21,9 +21,6 @@
 #include <stdio.h>
 #include <string.h>
 
-// Device I2C Address
-#define GPS_I2C_ADDRESS			0x42
-
 // GPS Registers
 #define GPS_BYTES_AVAILABLE		0xFD
 #define GPS_DATA_STREAM			0xFF
@@ -190,6 +187,8 @@ class xSN01: public xCoreClass
 		uint16_t readBytes16(byte device, byte reg);
 
 		unsigned long looptiming;		// used to calculate DDC timeout 2 seconds
+		
+		uint8_t GPS_I2C_ADDRESS;
 };
 
 extern xSN01 SN01;
