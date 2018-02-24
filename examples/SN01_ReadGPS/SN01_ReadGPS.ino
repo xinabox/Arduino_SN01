@@ -6,13 +6,6 @@
     
   The sensor communicates over the I2C Bus.
   
-  ------------------------TIPS--------------------------
-	Comment out this line ----->Wire.pins(2, 14); for support
-	on other devices.
-
-	Comment out this line ----->Wire.setClockStretchLimit(15000); 
-	for support on other devices.
-  
 *************************************************************/
 
 #include "xCore.h"
