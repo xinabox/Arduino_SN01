@@ -179,13 +179,6 @@ class xSN01: public xCoreClass
 		*/	
 		long parseNumber (char *str, uint8_t numdec);	// parse number
 
-		/*
-		* Read 16 Bytes from GPS
-		*
-		* @return Fix.
-		*/	
-		uint16_t readBytes16(byte device, byte reg);
-
 		unsigned long looptiming;		// used to calculate DDC timeout 2 seconds
 		
 		uint8_t GPS_I2C_ADDRESS;
