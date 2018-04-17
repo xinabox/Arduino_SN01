@@ -151,8 +151,16 @@ void xSN01::readGPS(void)
 	// check if timeout on DDC
 	if ( (millis() - mySN01.tick) > 100 ){
 		// check how many bytes available to read
-		numBytes = readBytes16(GPS_I2C_ADDRESS, GPS_BYTES_AVAILABLE);
-		if ( numBytes > 0){
+		// check how many bytes available to read
+		Wire.beginTransmission(GPS_I2C_ADDRESS);
+		Wire.write(GPS_BYTES_AVAILABLE);
+		Wire.endTransmission();
+		Wire.requestFrom(GPS_I2C_ADDRESS, 2);    // request number of bytes available
+		numBytes = Wire.read();
+		numBytes <<= 8;
+		numBytes |= Wire.read();
+
+		if ((numBytes > 0) && (numBytes < 10000)){
 			readStream(numBytes);
 		}
 		// GPS must be read contineously
@@ -167,10 +175,14 @@ void xSN01::readStream(int numBytes)
 {
 	char c = 0;
 	
-	xCore.write1(GPS_I2C_ADDRESS, GPS_DATA_STREAM);
+	Wire.beginTransmission(GPS_I2C_ADDRESS);
+	Wire.write(0xFF);
+	Wire.endTransmission();
 
 	for ( int i = 0; i < numBytes; i++ ){
-		c = xCore.readStream(GPS_I2C_ADDRESS);
+		Wire.requestFrom(0x42, 1);   
+    c = Wire.read();
+		
 		if( c == '$' ){
 			mySN01.bufferidx = 0;
 			mySN01.buffer[mySN01.bufferidx++] = c;
