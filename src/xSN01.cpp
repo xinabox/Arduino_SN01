@@ -151,7 +151,6 @@ void xSN01::readGPS(void)
 	// check if timeout on DDC
 	if ( (millis() - mySN01.tick) > 100 ){
 		// check how many bytes available to read
-		// check how many bytes available to read
 		Wire.beginTransmission(GPS_I2C_ADDRESS);
 		Wire.write(GPS_BYTES_AVAILABLE);
 		Wire.endTransmission();
@@ -384,19 +383,4 @@ long xSN01::parseNumber (char *str, uint8_t numdec)
     str++;
 	}
 	return d;
-}
-
-/********************************************************
- 	Read 16 Bytes From DDC
-*********************************************************/
-uint16_t xSN01::readBytes16(byte device, byte reg){
-	uint16_t value;
-	Wire.beginTransmission((uint8_t)device);
-	Wire.write((uint8_t)reg);
-	Wire.endTransmission(false);
-	Wire.requestFrom((uint8_t)device, (uint8_t)2);
-	value = Wire.read(); 
-	value <<= 8;
-	value |= Wire.read();
-	return value;
 }
