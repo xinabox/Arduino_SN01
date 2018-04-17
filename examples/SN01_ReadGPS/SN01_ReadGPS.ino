@@ -24,11 +24,15 @@ void setup(){
 	Serial.println("       XINABOX SN01 GPS Data        ");
 	Serial.println("====================================");
 
-	 // Set the I2C Pins for CW01
-	#ifdef ESP8266
-	  Wire.pins(2, 14);
-	  Wire.setClockStretchLimit(15000);
-	#endif
+#ifdef ESP8266
+	// Start the I2C Communication
+  Wire.begin(2, 14); // set I2C Pins for CW01
+  Wire.setClockStretchLimit(15000);
+#else
+	// Start the I2C Communication
+  Wire.begin();
+#endif
+
 
 	// Start the I2C Communication
 	Wire.begin(); 
