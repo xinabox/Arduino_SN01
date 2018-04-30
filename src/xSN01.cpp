@@ -129,7 +129,7 @@ uint8_t xSN01::getQuality(void)
 *********************************************************/
 uint8_t xSN01::getSatelitesConnected(void)
 {
-	return (((float)mySN01.NumSats)/100.0);
+	return (mySN01.NumSats));
 }	
 
 /********************************************************
