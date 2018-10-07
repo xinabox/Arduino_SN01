@@ -12,135 +12,83 @@
 */
 
 #include <Arduino_SN01.h>
-#include "SN01_Types.h"
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
+#include <stdlib.h>
+
+#define _GPRMCterm   "GPRMC"
+#define _GPGGAterm   "GPGGA"
+#define _GNRMCterm   "GNRMC"
+#define _GNGGAterm   "GNGGA"
+
+xSN01::xSN01()
+  :  parity(0)
+  ,  isChecksumTerm(false)
+  ,  curSentenceType(GPS_SENTENCE_OTHER)
+  ,  curTermNumber(0)
+  ,  curTermOffset(0)
+  ,  sentenceHasFix(false)
+  ,  customElts(0)
+  ,  customCandidates(0)
+  ,  encodedCharCount(0)
+  ,  sentencesWithFixCount(0)
+  ,  failedChecksumCount(0)
+  ,  passedChecksumCount(0)
+{
+  term[0] = '\0';
+}
 
 /*-------------------Public Function---------------------*/
 
-/********************************************************
- 	Constructor
-*********************************************************/
-xSN01::xSN01(void)
+bool xSN01::begin(void)
 {
-	// Device I2C Address
-	uint8_t GPS_I2C_ADDRESS	=	0x42;
-	mySN01.tick = 0;
-	mySN01.Type = 2;
-	mySN01.GPS_checksum_calc = false;
-	mySN01.bufferidx = 0;
-	mySN01.NewData = 0;
-	mySN01.Fix = 0;
-	mySN01.Quality = 0;
-	mySN01.PrintErrors = 0;
+	if(xCore.ping(0x42))
+	{
+		return true;
+	}
+	return false;
 }
 
-/********************************************************
- 	Configure GPS 
-*********************************************************/
-void xSN01::begin(void)
-{
-	millis();
-}
-
-
-/********************************************************
- 	Read Data from GPS
-*********************************************************/
 void xSN01::poll(void)
 {
 	readGPS();
 }
 
 /********************************************************
- 	Request Time UTC from GPS
+ 	Check if data is available from SN01
 *********************************************************/
-long xSN01::getTime(void)
+bool xSN01::dataAvailable(uint16_t &bytes)
 {
-	return mySN01.Time;
+	uint16_t numBytes = 0;
+	// check if timeout on DDC
+	if ( (millis() - tick) > 200 ){
+		// check how many bytes available to read
+		Wire.beginTransmission(0x42);
+		Wire.write(0xFD);
+		Wire.endTransmission();
+		Wire.requestFrom(0x42, 2);    // request number of bytes available
+
+		numBytes = Wire.read();
+		numBytes <<= 8;
+		numBytes |= Wire.read();
+
+		//Serial.println(numBytes);
+
+		if ((numBytes > 0) && (numBytes < 10000))
+  		{
+			bytes = numBytes;
+			tick = millis();
+			return true;
+		}
+
+		bytes = numBytes;
+
+		// GPS must be read contineously
+		tick = millis();
+	}
+	return false;	
 }
-
-/********************************************************
- 	Request altitude from GPS
-*********************************************************/
-long xSN01::getAltitude(void)
-{
-	return mySN01.Altitude;
-}
-
-/********************************************************
- 	Request Latitude from GPS
-*********************************************************/
-long xSN01::getLatitude(void)
-{
-	return mySN01.Latitude;
-}
-
-/********************************************************
- 	Request longitude from GPS
-*********************************************************/
-long xSN01::getLongitude(void)
-{
-	return mySN01.Longitude;
-}
-
-/********************************************************
- 	Request date from GPS
-*********************************************************/
-long xSN01::getDate(void)
-{
-	return mySN01.Date;
-}
-
-/********************************************************
- 	Request horizontal dilution of precision from GPS
-*********************************************************/
-float xSN01::getHDOP(void)
-{
-	return (((float)mySN01.HDOP)/10.0);
-}
-
-/********************************************************
- 	Request speed over ground from GPS
-*********************************************************/
-float xSN01::getSOG(void)
-{
-	return (((float)mySN01.SoG)/100.0);
-}					
-		
-/********************************************************
- 	Request course over ground from GPS
-*********************************************************/
-float xSN01::getCOG(void)
-{
-	return (((float)mySN01.CoG)/100.0);
-}	
-
-/********************************************************
- 	Request qaulity of results
-*********************************************************/
-uint8_t xSN01::getQuality(void)
-{
-	return mySN01.Quality;
-}								
- 
-/********************************************************
- 	Request number of satelittes connected from GPS
-*********************************************************/
-uint8_t xSN01::getSatelitesConnected(void)
-{
-	return mySN01.NumSats;
-}	
-
-/********************************************************
- 	Request if GPS has a satelitte fix
-*********************************************************/
-uint8_t xSN01::getFix(void)
-{
-	return mySN01.Fix;
-}
-
-/*-------------------Private Function---------------------*/
 
 /********************************************************
  	Read GPS data over I2C
@@ -149,12 +97,12 @@ void xSN01::readGPS(void)
 {
 	uint16_t numBytes = 0;
 	// check if timeout on DDC
-	if ( (millis() - mySN01.tick) > 100 ){
+	if ( (millis() - tick) > 100 ){
 		// check how many bytes available to read
-		Wire.beginTransmission(GPS_I2C_ADDRESS);
-		Wire.write(GPS_BYTES_AVAILABLE);
+		Wire.beginTransmission(0x42);
+		Wire.write(0xFD);
 		Wire.endTransmission();
-		Wire.requestFrom(GPS_I2C_ADDRESS, 2);    // request number of bytes available
+		Wire.requestFrom(0x42, 2);
 		numBytes = Wire.read();
 		numBytes <<= 8;
 		numBytes |= Wire.read();
@@ -163,224 +111,619 @@ void xSN01::readGPS(void)
 			readStream(numBytes);
 		}
 		// GPS must be read contineously
-		mySN01.tick = millis();
+		tick = millis();
 	}
 }
 
 /********************************************************
  	Read GPS Stream over I2C
 ********************************************************/
-void xSN01::readStream(int numBytes)
+void xSN01::readStream(uint16_t numBytes)
 {
-	char c = 0;
-	
-	Wire.beginTransmission(GPS_I2C_ADDRESS);
-	Wire.write(0xFF);
-	Wire.endTransmission();
+  	if ((numBytes > 0) && (numBytes < 10000))
+  	{
+   		char c = 0;
 
-	for ( int i = 0; i < numBytes; i++ ){
-		Wire.requestFrom(0x42, 1);   
-    c = Wire.read();
-		
-		if( c == '$' ){
-			mySN01.bufferidx = 0;
-			mySN01.buffer[mySN01.bufferidx++] = c;
-			mySN01.GPS_checksum = 0;
-			mySN01.GPS_checksum_calc = true;
-			continue;
-		}
-		if( c == '\r' ){
-			mySN01.buffer[mySN01.bufferidx++] = 0;
-			parseNemaGPS();
-		}else{
-			if(mySN01.bufferidx < (120 - 1)){
-				if (c == '*'){
-					mySN01.GPS_checksum_calc = false;    // Checksum calculation end
-				}
+    	Wire.beginTransmission(0x42);
+    	Wire.write(0xFF);
+    	Wire.endTransmission();
 
-				mySN01.buffer[mySN01.bufferidx++] = c;
-
-				if (mySN01.GPS_checksum_calc){
-					mySN01.GPS_checksum ^= c;   // XOR
-				}
-
-			}else{
-				mySN01.bufferidx = 0; // Buffer overflow : restart
-			}
-		}
-	}
+    for ( int i = 0; i < numBytes; i++ ) {
+      	Wire.requestFrom(0x42, 1);
+      	c = Wire.read();
+		encode(c);
+    }
+  }
 }
+
+/********************************************************
+ 	Request Time UTC from GPS
+*********************************************************/
+String xSN01::getTime(void)
+{
+	String tempData = getTime(time);
+	return tempData;
+}
+
+/********************************************************
+ 	Request altitude from GPS
+*********************************************************/
+float xSN01::getAltitude(void)
+{
+	String tempData = getFloat(altitude.meters(), altitude.isValid(), 7, 2);
+	return atof(tempData.c_str());
+}
+
+/********************************************************
+ 	Request Latitude from GPS
+*********************************************************/
+float xSN01::getLatitude(void)
+{
+	String tempData = getFloat(location.lat(), location.isValid(), 11, 6);
+	return atof(tempData.c_str());
+}
+
+/********************************************************
+ 	Request longitude from GPS
+*********************************************************/
+float xSN01::getLongitude(void)
+{
+	String tempData = getFloat(location.lng(), location.isValid(), 12, 6);
+	return atof(tempData.c_str());
+}
+
+/********************************************************
+ 	Request date from GPS
+*********************************************************/
+String xSN01::getDate(void)
+{
+	String tempData = getDate(date);
+	return tempData;
+}
+
+/********************************************************
+ 	Request horizontal dilution of precision from GPS
+*********************************************************/
+float xSN01::getHDOP(void)
+{
+	String tempData = getFloat(hdop.hdop(), hdop.isValid(), 6, 1);
+	return atof(tempData.c_str());
+}
+
+/********************************************************
+ 	Request speed over ground from GPS
+*********************************************************/
+float xSN01::getSOG(void)
+{
+	String tempData = getFloat(speed.kmph(), speed.isValid(), 6, 2);
+	return atof(tempData.c_str());
+}					
+		
+/********************************************************
+ 	Request course over ground from GPS
+*********************************************************/
+float xSN01::getCOG(void)
+{
+	String tempData = getFloat(course.deg(), course.isValid(), 7, 2);
+	return atof(tempData.c_str());
+}						
  
 /********************************************************
- 	Parse Nema data
+ 	Request number of satelittes connected from GPS
 *********************************************************/
-void xSN01::parseNemaGPS(void)
+int xSN01::getSatelitesConnected(void)
 {
-	byte NMEA_check;
-	long aux_deg;
-	long aux_min;
-	char *parseptr;
+	String tempData =getInt(satellites.value(), satellites.isValid(), 5);
+	return atoi(tempData.c_str());
+}	
 
-	if (strncmp(mySN01.buffer, "$GPGGA", 6) == 0) {   // Check if sentence begins with $GPGGA
-		if (mySN01.buffer[mySN01.bufferidx - 4] == '*') {      // Check for the "*" character
-			NMEA_check = parseHex(mySN01.buffer[mySN01.bufferidx - 3]) * 16 + parseHex(mySN01.buffer[mySN01.bufferidx - 2]); // Read the checksums characters
-			if (mySN01.GPS_checksum == NMEA_check) {     // Checksum validation
-				mySN01.NewData = 1;  // New GPS Data
-				parseptr = strchr(mySN01.buffer, ',') + 1;
-				mySN01.Time = parseNumber(parseptr, 2);         // GPS UTC time hhmmss.ss
-				parseptr = strchr(parseptr, ',') + 1;
+/********************************************************
+ 	Proccess GPS Info
+*********************************************************/
 
-				mySN01.Latitude = parseNumber(parseptr, 4) + 1;
+bool xSN01::encode(char c)
+{
+	++encodedCharCount;
 
-				aux_deg = parseDecimal(parseptr, 2);     // degrees
-				aux_min = parseNumber(parseptr + 2, 4);  // minutes (sexagesimal) => Convert to decimal
-				mySN01.Latitude = aux_deg * 10000000 + (aux_min * 50) / 3; // degrees + minutes/0.6  (*10000000) (0.6 = 3/5)
-
-				parseptr = strchr(parseptr, ',') + 1;
-
-				if (*parseptr == 'S'){
-					mySN01.Latitude = -1 * mySN01.Latitude;            // South Latitudes are negative
-				}
-
-				parseptr = strchr(parseptr, ',') + 1;
-
-				// W Longitudes are Negative
-				mySN01.Longitude = parseNumber(parseptr, 4) + 1;
-
-				aux_deg = parseDecimal(parseptr, 3);     // degrees
-				aux_min = parseNumber(parseptr + 3, 4);  // minutes (sexagesimal)
-				mySN01.Longitude = aux_deg * 10000000 + (aux_min * 50) / 3; // degrees + minutes/0.6 (*10000000)
-
-				//Longitude = -1*Longitude;                   // This Assumes that we are in W longitudes...
-				parseptr = strchr(parseptr, ',') + 1;
-
-				if (*parseptr == 'W'){
-					mySN01.Longitude = -1 * mySN01.Longitude;            // West Longitudes are negative
-				}
-
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.Fix = parseDecimal(parseptr, 1);
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.NumSats = parseDecimal(parseptr, 2);
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.HDOP = parseNumber(parseptr, 1);         // HDOP * 10
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.Altitude = parseNumber(parseptr, 1) / 10; // Altitude in decimeters*100 = milimeters
-	
-				if (mySN01.Fix < 1){
-				 	mySN01.Quality = 0;      // No FIX
-				}else if (mySN01.NumSats < 5){
-					mySN01.Quality = 1;      // Bad (Num sats < 5)
-				}else if (mySN01.HDOP > 30){
-					mySN01.Quality = 2;      // Poor (HDOP > 30)
-				}else if (mySN01.HDOP > 25){
-					mySN01.Quality = 3;      // Medium (HDOP > 25)
-				}else{
-					mySN01.Quality = 4;      // Good (HDOP < 25)
-				}
-			}
-		}			
-	}else if (strncmp(mySN01.buffer, "$GPVTG", 6) == 0) {   // Check if sentence begins with $GPVTG
-		if (mySN01.buffer[mySN01.bufferidx - 4] == '*') {      // Check for the "*" character
-			NMEA_check = parseHex(mySN01.buffer[mySN01.bufferidx - 3]) * 16 + parseHex(mySN01.buffer[mySN01.bufferidx - 2]); // Read the checksums characters
-			if (mySN01.GPS_checksum == NMEA_check) {     // Checksum validation
-				parseptr = strchr(mySN01.buffer, ',') + 1;
-				mySN01.CoG = (parseNumber(parseptr, 2));//*0xFF;     // Ground course in degrees * 100
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.SoG = (parseNumber(parseptr, 2) * 10 / 36); // Convert Km/h to m/s
-				}
-			}
-	}else if (strncmp(mySN01.buffer, "$GPRMC", 6) == 0) {   // Check if sentence begins with $GPVTG
-		if (mySN01.buffer[mySN01.bufferidx - 4] == '*') {     // Check for the "*" character
-			NMEA_check = parseHex(mySN01.buffer[mySN01.bufferidx - 3]) * 16 + parseHex(mySN01.buffer[mySN01.bufferidx - 2]); // Read the checksums characters
-			if (mySN01.GPS_checksum == NMEA_check) {     // Checksum validation
-				parseptr = strchr(mySN01.buffer, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				parseptr = strchr(parseptr, ',') + 1;
-				mySN01.Date = parseNumber(parseptr, 1);
-			}
+	switch(c)
+	{
+	case ',': // term terminators
+		parity ^= (uint8_t)c;
+	case '\r':
+	case '\n':
+	case '*':
+		{
+		bool isValidSentence = false;
+		if (curTermOffset < sizeof(term))
+		{
+			term[curTermOffset] = 0;
+			isValidSentence = endOfTermHandler();
 		}
-	}else{
-		mySN01.bufferidx = 0;
+		++curTermNumber;
+		curTermOffset = 0;
+		isChecksumTerm = c == '*';
+		return isValidSentence;
+		}
+		break;
+
+	case '$': // sentence begin
+		curTermNumber = curTermOffset = 0;
+		parity = 0;
+		curSentenceType = GPS_SENTENCE_OTHER;
+		isChecksumTerm = false;
+		sentenceHasFix = false;
+		return false;
+
+	default: // ordinary characters
+		if (curTermOffset < sizeof(term) - 1)
+		term[curTermOffset++] = c;
+		if (!isChecksumTerm)
+		parity ^= c;
+		return false;
+	}
+
+	return false;
+}
+
+//
+// internal utilities
+//
+int xSN01::fromHex(char a)
+{
+  if (a >= 'A' && a <= 'F')
+    return a - 'A' + 10;
+  else if (a >= 'a' && a <= 'f')
+    return a - 'a' + 10;
+  else
+    return a - '0';
+}
+
+// static
+// Parse a (potentially negative) number with up to 2 decimal digits -xxxx.yy
+int32_t xSN01::parseDecimal(const char *term)
+{
+	bool negative = *term == '-';
+	if (negative) ++term;
+	int32_t ret = 100 * (int32_t)atol(term);
+	while (isdigit(*term)) ++term;
+	if (*term == '.' && isdigit(term[1]))
+	{
+		ret += 10 * (term[1] - '0');
+		if (isdigit(term[2]))
+		ret += term[2] - '0';
+	}
+	return negative ? -ret : ret;
+}
+
+// static
+// Parse degrees in that funny NMEA format DDMM.MMMM
+void xSN01::parseDegrees(const char *term, RawDegrees &deg)
+{
+	uint32_t leftOfDecimal = (uint32_t)atol(term);
+	uint16_t minutes = (uint16_t)(leftOfDecimal % 100);
+	uint32_t multiplier = 10000000UL;
+	uint32_t tenMillionthsOfMinutes = minutes * multiplier;
+
+	deg.deg = (int16_t)(leftOfDecimal / 100);
+
+	while (isdigit(*term))
+		++term;
+
+	if (*term == '.')
+		while (isdigit(*++term))
+		{
+		multiplier /= 10;
+		tenMillionthsOfMinutes += (*term - '0') * multiplier;
+		}
+
+	deg.billionths = (5 * tenMillionthsOfMinutes + 1) / 3;
+	deg.negative = false;
+}
+
+#define COMBINE(sentence_type, term_number) (((unsigned)(sentence_type) << 5) | term_number)
+
+// Processes a just-completed term
+// Returns true if new sentence has just passed checksum test and is validated
+bool xSN01::endOfTermHandler()
+{
+	// If it's the checksum term, and the checksum checks out, commit
+	if (isChecksumTerm)
+	{
+		byte checksum = 16 * fromHex(term[0]) + fromHex(term[1]);
+		if (checksum == parity)
+		{
+		passedChecksumCount++;
+		if (sentenceHasFix)
+			++sentencesWithFixCount;
+
+		switch(curSentenceType)
+		{
+		case GPS_SENTENCE_GPRMC:
+			date.commit();
+			time.commit();
+			if (sentenceHasFix)
+			{
+			location.commit();
+			speed.commit();
+			course.commit();
+			}
+			break;
+		case GPS_SENTENCE_GPGGA:
+			time.commit();
+			if (sentenceHasFix)
+			{
+			location.commit();
+			altitude.commit();
+			}
+			satellites.commit();
+			hdop.commit();
+			break;
+		}
+
+		// Commit all custom listeners of this sentence type
+		for (SN01_CUSTOM *p = customCandidates; p != NULL && strcmp(p->sentenceName, customCandidates->sentenceName) == 0; p = p->next)
+			p->commit();
+		return true;
+		}
+
+		else
+		{
+		++failedChecksumCount;
+		}
+
+		return false;
+	}
+
+	// the first term determines the sentence type
+	if (curTermNumber == 0)
+	{
+		if (!strcmp(term, _GPRMCterm) || !strcmp(term, _GNRMCterm))
+		curSentenceType = GPS_SENTENCE_GPRMC;
+		else if (!strcmp(term, _GPGGAterm) || !strcmp(term, _GNGGAterm))
+		curSentenceType = GPS_SENTENCE_GPGGA;
+		else
+		curSentenceType = GPS_SENTENCE_OTHER;
+
+		// Any custom candidates of this sentence type?
+		for (customCandidates = customElts; customCandidates != NULL && strcmp(customCandidates->sentenceName, term) < 0; customCandidates = customCandidates->next);
+		if (customCandidates != NULL && strcmp(customCandidates->sentenceName, term) > 0)
+		customCandidates = NULL;
+
+		return false;
+	}
+
+	if (curSentenceType != GPS_SENTENCE_OTHER && term[0])
+		switch(COMBINE(curSentenceType, curTermNumber))
+	{
+		case COMBINE(GPS_SENTENCE_GPRMC, 1): // Time in both sentences
+		case COMBINE(GPS_SENTENCE_GPGGA, 1):
+		time.setTime(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 2): // GPRMC validity
+		sentenceHasFix = term[0] == 'A';
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 3): // Latitude
+		case COMBINE(GPS_SENTENCE_GPGGA, 2):
+		location.setLatitude(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 4): // N/S
+		case COMBINE(GPS_SENTENCE_GPGGA, 3):
+		location.rawNewLatData.negative = term[0] == 'S';
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 5): // Longitude
+		case COMBINE(GPS_SENTENCE_GPGGA, 4):
+		location.setLongitude(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 6): // E/W
+		case COMBINE(GPS_SENTENCE_GPGGA, 5):
+		location.rawNewLngData.negative = term[0] == 'W';
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 7): // Speed (GPRMC)
+		speed.set(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 8): // Course (GPRMC)
+		course.set(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPRMC, 9): // Date (GPRMC)
+		date.setDate(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPGGA, 6): // Fix data (GPGGA)
+		sentenceHasFix = term[0] > '0';
+		break;
+		case COMBINE(GPS_SENTENCE_GPGGA, 7): // Satellites used (GPGGA)
+		satellites.set(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPGGA, 8): // HDOP
+		hdop.set(term);
+		break;
+		case COMBINE(GPS_SENTENCE_GPGGA, 9): // Altitude (GPGGA)
+		altitude.set(term);
+		break;
+	}
+
+	// Set custom values as needed
+	for (SN01_CUSTOM *p = customCandidates; p != NULL && strcmp(p->sentenceName, customCandidates->sentenceName) == 0 && p->termNumber <= curTermNumber; p = p->next)
+		if (p->termNumber == curTermNumber)
+			p->set(term);
+
+	return false;
+}
+
+/* static */
+double xSN01::distanceBetween(double lat1, double long1, double lat2, double long2)
+{
+	// returns distance in meters between two positions, both specified
+	// as signed decimal-degrees latitude and longitude. Uses great-circle
+	// distance computation for hypothetical sphere of radius 6372795 meters.
+	// Because Earth is no exact sphere, rounding errors may be up to 0.5%.
+	// Courtesy of Maarten Lamers
+	double delta = radians(long1-long2);
+	double sdlong = sin(delta);
+	double cdlong = cos(delta);
+	lat1 = radians(lat1);
+	lat2 = radians(lat2);
+	double slat1 = sin(lat1);
+	double clat1 = cos(lat1);
+	double slat2 = sin(lat2);
+	double clat2 = cos(lat2);
+	delta = (clat1 * slat2) - (slat1 * clat2 * cdlong);
+	delta = sq(delta);
+	delta += sq(clat2 * sdlong);
+	delta = sqrt(delta);
+	double denom = (slat1 * slat2) + (clat1 * clat2 * cdlong);
+	delta = atan2(delta, denom);
+	return delta * 6372795;
+}
+
+double xSN01::courseTo(double lat1, double long1, double lat2, double long2)
+{
+	// returns course in degrees (North=0, West=270) from position 1 to position 2,
+	// both specified as signed decimal-degrees latitude and longitude.
+	// Because Earth is no exact sphere, calculated course may be off by a tiny fraction.
+	// Courtesy of Maarten Lamers
+	double dlon = radians(long2-long1);
+	lat1 = radians(lat1);
+	lat2 = radians(lat2);
+	double a1 = sin(dlon) * cos(lat2);
+	double a2 = sin(lat1) * cos(lat2) * cos(dlon);
+	a2 = cos(lat1) * sin(lat2) - a2;
+	a2 = atan2(a1, a2);
+	if (a2 < 0.0)
+	{
+		a2 += TWO_PI;
+	}
+	return degrees(a2);
+}
+
+const char *xSN01::cardinal(double course)
+{
+	static const char* directions[] = {"N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW"};
+	int direction = (int)((course + 11.25f) / 22.5f);
+	return directions[direction % 16];
+}
+
+void SN01_LOCATION::commit()
+{
+	rawLatData = rawNewLatData;
+	rawLngData = rawNewLngData;
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_LOCATION::setLatitude(const char *term)
+{
+   	xSN01::parseDegrees(term, rawNewLatData);
+}
+
+void SN01_LOCATION::setLongitude(const char *term)
+{	
+   	xSN01::parseDegrees(term, rawNewLngData);
+}
+
+double SN01_LOCATION::lat()
+{
+	updated = false;
+	double ret = rawLatData.deg + rawLatData.billionths / 1000000000.0;
+	return rawLatData.negative ? -ret : ret;
+}
+
+double SN01_LOCATION::lng()
+{
+	updated = false;
+	double ret = rawLngData.deg + rawLngData.billionths / 1000000000.0;
+	return rawLngData.negative ? -ret : ret;
+}
+
+void SN01_DATE::commit()
+{
+	date = newDate;
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_TIME::commit()
+{
+	time = newTime;
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_TIME::setTime(const char *term)
+{
+   	newTime = (uint32_t)xSN01::parseDecimal(term);
+}
+
+void SN01_DATE::setDate(const char *term)
+{
+   	newDate = atol(term);
+}
+
+uint16_t SN01_DATE::year()
+{
+	updated = false;
+	uint16_t year = date % 100;
+	return year + 2000;
+}
+
+uint8_t SN01_DATE::month()
+{
+	updated = false;
+	return (date / 100) % 100;
+}
+
+uint8_t SN01_DATE::day()
+{
+	updated = false;
+	return date / 10000;
+}
+
+uint8_t SN01_TIME::hour()
+{
+	updated = false;
+	return time / 1000000;
+}
+
+uint8_t SN01_TIME::minute()
+{
+	updated = false;
+	return (time / 10000) % 100;
+}
+
+uint8_t SN01_TIME::second()
+{
+	updated = false;
+	return (time / 100) % 100;
+}
+
+uint8_t SN01_TIME::centisecond()
+{
+	updated = false;
+	return time % 100;
+}
+
+void SN01_DECIMAL::commit()
+{
+	val = newval;
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_DECIMAL::set(const char *term)
+{
+   	newval = xSN01::parseDecimal(term);
+}
+
+void SN01_INTERGER::commit()
+{
+	val = newval;
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_INTERGER::set(const char *term)
+{
+   	newval = atol(term);
+}
+
+SN01_CUSTOM::SN01_CUSTOM(xSN01 &gps, const char *_sentenceName, int _termNumber)
+{
+   	begin(gps, _sentenceName, _termNumber);
+}
+
+void SN01_CUSTOM::begin(xSN01 &gps, const char *_sentenceName, int _termNumber)
+{
+	lastCommitTime = 0;
+	updated = valid = false;
+	sentenceName = _sentenceName;
+	termNumber = _termNumber;
+	memset(stagingBuffer, '\0', sizeof(stagingBuffer));
+	memset(buffer, '\0', sizeof(buffer));
+
+	// Insert this item into the GPS tree
+	gps.insertCustom(this, _sentenceName, _termNumber);
+}
+
+void SN01_CUSTOM::commit()
+{
+	strcpy(this->buffer, this->stagingBuffer);
+	lastCommitTime = millis();
+	valid = updated = true;
+}
+
+void SN01_CUSTOM::set(const char *term)
+{
+   	strncpy(this->stagingBuffer, term, sizeof(this->stagingBuffer));
+}
+
+void xSN01::insertCustom(SN01_CUSTOM *pElt, const char *sentenceName, int termNumber)
+{
+	SN01_CUSTOM **ppelt;
+
+	for (ppelt = &this->customElts; *ppelt != NULL; ppelt = &(*ppelt)->next)
+	{
+		int cmp = strcmp(sentenceName, (*ppelt)->sentenceName);
+		if (cmp < 0 || (cmp == 0 && termNumber < (*ppelt)->termNumber))
+			break;
+	}
+
+	pElt->next = *ppelt;
+	*ppelt = pElt;
+}
+
+String xSN01::getDate(SN01_DATE &d)
+{
+	char sz[32] = "ERR";
+	if (!d.isValid())
+	{
+		return sz;
+	}
+	else
+	{
+		char sz[32];
+		sprintf(sz, "%02d/%02d/%02d ", d.month(), d.day(), d.year());
+		return sz;
 	}
 }
 
-/********************************************************
- 	Parse Hexidecimal
-*********************************************************/
-uint8_t xSN01::parseHex(char c)
+String xSN01::getTime(SN01_TIME &t)
 {
-	if (c < '0'){ 
-		return (0); 
+	char sz[32] = "ERR";
+	if (!t.isValid())
+	{
+		return sz;
 	}
-	if (c <= '9'){ 
-		return (c - '0'); 
-	}
-	if (c < 'A'){
-	 	return (0); 
-	}
-	if (c <= 'F'){
-	 	return ((c - 'A') + 10);	
+	else
+	{
+		char sz[32];
+		sprintf(sz, "%02d:%02d:%02d ", t.hour(), t.minute(), t.second());
+		return sz;
 	}
 }
 
-/********************************************************
- 	Parse Decimal
-*********************************************************/
-long xSN01::parseDecimal(char *str, uint8_t num_car)
+String xSN01::getFloat(float val, bool valid, int len, int prec)
 {
-	long d = 0;
-	byte i;
-	
-	i = num_car;
-	while ((str[0] != 0) && (i > 0)) {
-		if ((str[0] > '9') || (str[0] < '0')){
-			return d;
-		}
-		d *= 10;
-		d += str[0] - '0';
-		str++;
-		i--;
+	char sz[32] = "ERR";
+	if (!valid)
+	{
+		return sz;
 	}
-  return d;	
+	else
+	{
+		sprintf(sz, "%f", val);
+		return sz;
+	}
 }
 
-/********************************************************
- 	Parse Number
-*********************************************************/
-long xSN01::parseNumber (char *str, uint8_t numdec)
+String xSN01::getInt(unsigned long val, bool valid, int len)
 {
-	long d = 0;
-	byte ndec = 0;
-
-	while (str[0] != 0) {
-		if (str[0] == '.') {
-		ndec = 1;
-		}else{
-			if ((str[0] > '9') || (str[0] < '0')){
-        	return d;
-			}
-			d *= 10;
-			d += str[0] - '0';
-			if (ndec > 0){
-				ndec++;
-			}
-			if (ndec > numdec){   // we reach the number of decimals...
-				return d;
-			}
-		}
-    str++;
+	char sz[32] = "ERR";
+	if (valid)
+	{
+		sprintf(sz, "%ld", val);
+		return sz;
 	}
-	return d;
+	else
+	{
+		return sz;
+	}
 }

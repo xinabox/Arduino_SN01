@@ -43,10 +43,10 @@ void setup(){
 
 void loop(){
 	// Create a variable to store the data read from SN01
-	long time = 0;
+	String time;
 	long latitude = 0;
 	long longitude = 0;
-	long date = 0;
+	String date;
   
 	// Poll the sensor to read all available data
 	SN01.poll();
