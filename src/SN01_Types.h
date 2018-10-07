@@ -11,8 +11,8 @@
 	u-blox NEO-6 - https://www.u-blox.com/sites/default/files/products/documents/NEO-6_DataSheet_(GPS.G6-HW-09005).pdf
 */
 
-#ifndef xSN01_Types_h
-#define xSN01_Types_h
+#ifndef SN01_Types_h
+#define SN01_Types_h
 
 struct structSN01
 {
