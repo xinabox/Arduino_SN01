@@ -11,8 +11,8 @@
 	u-blox NEO-6 - https://www.u-blox.com/sites/default/files/products/documents/NEO-6_DataSheet_(GPS.G6-HW-09005).pdf
 */
 
-#ifndef arduino-SN01_h
-#define arduino-SN01_h
+#ifndef xSN01_h
+#define xSN01_h
 
 // System Include
 #include <inttypes.h>

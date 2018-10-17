@@ -8,8 +8,7 @@
   
 *************************************************************/
 
-#include "xCore.h"
-#include "arduino-SN01.h"
+#include "xSN01.h"
 
 xSN01 SN01;
 
