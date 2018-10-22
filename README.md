@@ -4,7 +4,7 @@ GNSS Module
 
 This module can be purchased on [Xinabox CC](https://xinabox.cc/products/SN01/).
 
-This library is based on the [https://github.com/mikalhart/TinyGPSPlus TinyGPSPlus] library by [https://github.com/mikalhart/ Mikal Hart].
+This library is based on the [TinyGPSPlus](https://github.com/mikalhart/TinyGPSPlus) library by (Mikal Hart)[https://github.com/mikalhart].
 ## Requirements
   - [☒Core Library](https://github.com/xinabox/xCore)
   - [Arduino IDE 1.8.1](https://www.arduino.cc/en/main/software)
